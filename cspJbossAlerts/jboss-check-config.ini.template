@@ -25,9 +25,12 @@ api_password =
 instance =
 ;table is unique to each service now instance
 table = incident
+attachment_table =
 ticket_type = incident
 ;service now guids are used for configuration item, assignment group, etc
 configuration_item =
+request_u_description =
+request_catalog_item =
 assignment_group =
 assignee =
 business_hours_start_time = 08:00:00

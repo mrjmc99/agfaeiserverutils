@@ -41,6 +41,7 @@ def release_token(EI_FQDN):
         print(f"Failed to release token. Error: {str(e)}")
         return False  # Indicate failed token release
 
+
 # Function to look up available CS Nodes
 def lookup_available_nodes(EI_FQDN,EI_USER,EI_PASSWORD):
     print("Calling EI API")
