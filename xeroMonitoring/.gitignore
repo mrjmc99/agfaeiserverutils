@@ -1,0 +1,14 @@
+*.ini
+/.idea
+*.log
+id_rsa
+disabled_servers.txt
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+temp_meme.jpg

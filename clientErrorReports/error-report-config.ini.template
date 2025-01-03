@@ -1,0 +1,43 @@
+[Agfa]
+;location to store client initiated error reports long term
+error_report_repo = E:\\error-report-repo
+;typical agfa ei install source folder
+source_folder = C:\\Agfa\\IMPAX_Agility\\error-report
+search_term = comment
+ERA_server =
+use_ERA = false
+[Email]
+smtp_server = 
+smtp_port = 
+smtp_username = 
+smtp_password = None
+smtp_from_domain =
+;to add multiple receipeints seperate with a comma
+smtp_recipients = 
+
+[ServiceNow]
+api_user = 
+api_password = 
+;instance url is unique to each org
+instance = 
+;table is unique to each service now instance
+table = incident
+attachment_table =
+ticket_type = incident
+;service now guids are used for configuration item, assignment group, etc
+configuration_item =
+request_u_description =
+request_catalog_item =
+assignment_group = 
+assignee = 
+business_hours_start_time = 08:00:00
+business_hours_end_time = 17:00:00
+after_hours_urgency = 4
+after_hours_impact = 4
+business_hours_urgency = 4
+business_hours_impact = 4
+
+[Excludeditems]
+;text files with 1 computer or user per line
+excluded_computer_names_path = excluded_computer_names.txt
+excluded_user_codes_path = excluded_user_codes.txt
