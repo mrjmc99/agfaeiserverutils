@@ -1,30 +1,35 @@
 import base64
 import json
 import urllib
-from email.mime.image import MIMEImage
-from email.mime.multipart import MIMEMultipart
 import ast
 import requests
-import os
+import os, sys
 import configparser
 import paramiko
 import logging
 import uuid
 from time import sleep
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont
 import concurrent.futures
-import cx_Oracle
+import oracledb as cx_Oracle
 import urllib3
 import textwrap
+# Add the parent directory to the Python path for Common Imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common.notifications import send_email
+from common.serviceNow import create_service_now_incident, attach_file_to_ticket,create_service_now_request
+from common.fun import generate_meme
+
 
 # ignore insecure warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Get the absolute path of the script
 script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# properly resolve the common directory
+common_dir = os.path.join(script_dir, '..', 'common')
+common_dir = os.path.abspath(common_dir)
 
 # Set up logging
 log_file_path = os.path.join(script_dir, "xero_ticket.log")
@@ -88,10 +93,17 @@ smtp_recipients = smtp_recipients_string.split(",")
 
 # meme variables
 use_memes = config.getboolean("Meme", "use_memes")
-successful_restart_meme_path = os.path.join(script_dir, 'memes', config.get("Meme", "successful_restart_meme"))
-unsuccessful_restart_meme_path = os.path.join(script_dir, 'memes', config.get("Meme", "unsuccessful_restart_meme"))
+successful_restart_meme_path = os.path.join(
+    common_dir,
+    'memes',
+    config.get("Meme", "successful_restart_meme")
+)
+unsuccessful_restart_meme_path = os.path.join(
+    common_dir,
+    'memes',
+    config.get("Meme", "unsuccessful_restart_meme")
+)
 temp_meme_path = os.path.join(script_dir, os.path.dirname('memes'), 'temp_meme.jpg')
-font_path = os.path.join(script_dir, 'fonts', config.get("Meme", "font"))
 
 # service now variables
 service_now_instance = config.get("ServiceNow", "instance")
@@ -129,59 +141,6 @@ if business_hours_start <= current_time <= business_hours_end and current_day < 
     impact = business_hours_impact
 
 local_time_str = datetime.now().time()
-
-# Function to generate meme with better text size and positioning
-def generate_meme(image_path, top_text, bottom_text, output_path):
-    logging.info("Generating meme...")
-    try:
-        # Open the image
-        img = Image.open(image_path)
-        draw = ImageDraw.Draw(img)
-
-        # Load the TrueType font
-        max_width = img.width * 0.9  # Allow a 5% margin on either side
-        max_font_size = img.height // 10  # Set a maximum font size based on image height
-
-        font_size = max_font_size
-        font = ImageFont.truetype(font_path, font_size)
-
-        # Reduce font size until text fits within max_width
-        def fit_text_to_width(text, font):
-            while draw.textbbox((0, 0), text, font=font)[2] > max_width and font_size > 10:
-                font = ImageFont.truetype(font_path, font.size - 2)
-            return font
-
-        # Adjust top text font
-        font = fit_text_to_width(top_text, font)
-        wrapped_top_text = textwrap.fill(top_text, width=40)
-
-        # Draw top text
-        top_y_position = 10
-        draw.multiline_text(
-            ((img.width - draw.textbbox((0, 0), wrapped_top_text, font=font)[2]) / 2, top_y_position),
-            wrapped_top_text, fill="white", font=font, align="center"
-        )
-
-        # Adjust bottom text font
-        font = fit_text_to_width(bottom_text, font)
-        wrapped_bottom_text = textwrap.fill(bottom_text, width=40)
-
-        # Draw bottom text at the bottom with a bit of padding
-        bottom_y_position = img.height - draw.textbbox((0, 0), wrapped_bottom_text, font=font)[3] - 20
-        draw.multiline_text(
-            ((img.width - draw.textbbox((0, 0), wrapped_bottom_text, font=font)[2]) / 2, bottom_y_position),
-            wrapped_bottom_text, fill="white", font=font, align="center"
-        )
-
-        # Save the meme
-        img.save(output_path)
-        logging.info(f"Meme saved at {output_path}")
-        return output_path
-
-    except Exception as e:
-        logging.error(f"Failed to generate meme: {e}")
-        raise
-
 
 
 # disabled server management
@@ -229,67 +188,12 @@ class DisabledServerManager:
             if use_memes:
                 generate_meme(successful_restart_meme_path, f"Xero Ticketing/Image Display has been Restored on {xero_server}",
                               "", temp_meme_path)
-                send_email(smtp_recipients, subject, body, xero_server, temp_meme_path)
+                send_email(smtp_recipients, subject, body, xero_server,smtp_from_domain,smtp_server, smtp_port, temp_meme_path)
                 os.remove(temp_meme_path)
             else:
-                send_email(smtp_recipients, subject, body, xero_server)
+                send_email(smtp_recipients, subject, body, xero_server,smtp_from_domain,smtp_server, smtp_port)
             del servers[xero_server]
             DisabledServerManager.save_disabled_servers(servers)
-
-
-# Function to encode an image as base64
-def image_to_base64(image_path):
-    with open(image_path, "rb") as image_file:
-        encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
-    return encoded_image
-
-
-# Define a unified function to send emails, with optional meme attachment
-def send_email(smtp_recipients, subject, body, node, meme_path=None):
-    smtp_from = f"{node}@{smtp_from_domain}"
-    msg = construct_email_message(smtp_from, smtp_recipients, subject, body, meme_path)
-
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.sendmail(smtp_from, smtp_recipients, msg.as_string())
-        server.quit()
-        logging.info(f"Email sent to {', '.join(smtp_recipients)}")
-    except Exception as e:
-        logging.error(f"Email sending failed to {', '.join(smtp_recipients)}: {e}")
-
-
-
-# Helper function to construct email message with an embedded image
-def construct_email_message(smtp_from, smtp_recipients, subject, body, meme_path=None):
-    # Create a MIMEMultipart message to handle both HTML and image content
-    msg = MIMEMultipart('related')
-    msg["From"] = smtp_from
-    msg["To"] = ", ".join(smtp_recipients)
-    msg["Subject"] = subject
-
-    # Create the HTML body, embedding the image with a CID
-    body_html = body.replace("\n", "<br>")
-    html_body = f"""
-    <html>
-        <body>
-            <p>{body_html}</p>
-            {"<img src='cid:meme_image' alt='Meme'>" if meme_path else ""}
-        </body>
-    </html>
-    """
-    # Attach the HTML body to the email
-    msg.attach(MIMEText(html_body, 'html'))
-
-    # Attach the image if the meme_path is provided
-    if meme_path:
-        with open(meme_path, 'rb') as img_file:
-            meme_data = img_file.read()
-            image_part = MIMEImage(meme_data)
-            image_part.add_header('Content-ID', '<meme_image>')
-            image_part.add_header('Content-Disposition', 'inline', filename='meme.jpg')
-            msg.attach(image_part)
-
-    return msg
 
 
 def create_and_send_failure_incident(xero_server, failure_reason):
@@ -299,7 +203,10 @@ def create_and_send_failure_incident(xero_server, failure_reason):
     incident_summary = subject
     external_unique_id = str(uuid.uuid4())
     incident_number = create_service_now_incident(
-        incident_summary, body, configuration_item, external_unique_id, urgency, impact
+        incident_summary, body, 'none', configuration_item,
+        external_unique_id, urgency, impact,service_now_instance,
+        service_now_table,service_now_api_user,
+        service_now_api_password, assignment_group
     )
     if incident_number:
         subject += f" {incident_number}"
@@ -307,54 +214,7 @@ def create_and_send_failure_incident(xero_server, failure_reason):
     else:
         DisabledServerManager.save_disabled_server(xero_server, "Ticket Creation Failed")
 
-    send_email(smtp_recipients, subject, body, xero_server)
-
-
-def create_service_now_incident(summary, description, configuration_item, external_unique_id, urgency, impact):
-    incident_api_url = f"https://{service_now_instance}/api/now/table/{service_now_table}"
-
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-
-    payload = {
-        "u_short_description": summary,
-        "u_description": description,
-        "u_affected_user_id": "",
-        "u_configuration_item": configuration_item,
-        "u_external_unique_id": external_unique_id,
-        "u_urgency": urgency,
-        "u_impact": impact,
-        "u_type": ticket_type,
-        "u_assignment_group": assignment_group,
-    }
-
-    try:
-        # logging.info("Incident Creation Payload:", payload)  # Print payload for debugging
-        response = requests.post(
-            incident_api_url,
-            headers=headers,
-            auth=(service_now_api_user, service_now_api_password),
-            json=payload,
-        )
-
-        # logging.info("Incident Creation Response Status Code:", response.status_code)  # Print status code for debugging
-        # logging.info("Incident Creation Response Content:", response.text)  # Print response content for debugging
-
-        if response.status_code == 201:
-            incident_number = response.json().get("result", {}).get("u_task_string")
-            sys_id = response.json().get('result', {}).get('u_task', {}).get('value')
-            logging.info(f"ServiceNow incident created successfully: {incident_number}")
-            return incident_number
-        else:
-            logging.info(f"Failed to create ServiceNow incident. Response: {response.text}")
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"An error occurred while creating ServiceNow incident: {e}")
-
-    return None
-
+    send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port)
 
 def get_xero_ticket(xero_server, retry_amount=xero_retry_attempts):
     api_url = f"https://{xero_server}/encodedTicket"
@@ -512,9 +372,11 @@ def disable_xero_server(xero_server):
         incident_description = body
         external_unique_id = str(uuid.uuid4())
         incident_number = create_service_now_incident(
-            incident_summary, incident_description,
+            incident_summary, body, 'none',
             configuration_item, external_unique_id,
-            urgency, impact
+            urgency, impact,service_now_instance,service_now_table,
+            service_now_api_user, service_now_api_password,
+            assignment_group
         )
         if incident_number:
             logging.info(incident_number)
@@ -524,10 +386,10 @@ def disable_xero_server(xero_server):
             DisabledServerManager.save_disabled_server(xero_server, "Ticket Creation Failed")
         if use_memes:
             generate_meme(unsuccessful_restart_meme_path, "ONE DOES NOT SIMPLY",f"DISABLE XERO SERVICES ON {xero_server}", temp_meme_path)
-            send_email(smtp_recipients, subject, body, xero_server, temp_meme_path)
+            send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port, temp_meme_path)
             os.remove(temp_meme_path)
         else:
-            send_email(smtp_recipients, subject, body, xero_server)
+            send_email(smtp_recipients, subject, body, xero_server,smtp_from_domain,smtp_server, smtp_port)
     else:
         logging.info(f"Xero server Disabling successfully: {result}")
         subject = f"Xero Ticketing/Image Display has been Disabled on {xero_server} at {local_time_str}"
@@ -538,8 +400,11 @@ def disable_xero_server(xero_server):
         external_unique_id = str(uuid.uuid4())
         incident_number = create_service_now_incident(
             incident_summary, incident_description,
+            'none',
             configuration_item, external_unique_id,
-            urgency, impact
+            urgency, impact,service_now_instance,service_now_table,
+            service_now_api_user, service_now_api_password,
+            assignment_group
         )
         if incident_number:
             logging.info(incident_number)
@@ -549,10 +414,10 @@ def disable_xero_server(xero_server):
             DisabledServerManager.save_disabled_server(xero_server, "Ticket Creation Failed")
         if use_memes:
             generate_meme(unsuccessful_restart_meme_path, "ONE DOES NOT SIMPLY",f"RESTART XERO SERVICES ON {xero_server}", temp_meme_path)
-            send_email(smtp_recipients, subject, body, xero_server, temp_meme_path)
+            send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port, temp_meme_path)
             os.remove(temp_meme_path)
         else:
-            send_email(smtp_recipients, subject, body, xero_server)
+            send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port)
     return None  # Return the result or another suitable value
 
 
@@ -579,7 +444,7 @@ def execute_remote_command(hostname, username, private_key_path, command):
 def notify_failed_server_pending_upgrade(xero_server):
     subject = f"Xero Ticketing/Image Display Failing on {xero_server} at {local_time_str} (Server in PREPARE Status)"
     body = f"Xero Ticketing/Image Display Failing on {xero_server} at {local_time_str} (Server in PREPARE Status)\n The server will has been placed on the disabled servers lists, and will be removed automacailly after the upgrade is complete and ticketing is validated."
-    send_email(smtp_recipients, subject, body, xero_server)
+    send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port,)
     DisabledServerManager.save_disabled_server(xero_server, "PREPARE")
     return
 
@@ -610,10 +475,10 @@ def process_node(node):
             generate_meme(successful_restart_meme_path,
                           f"Xero Ticketing/Image Display has been Restored on {node}",
                           "", temp_meme_path)
-            send_email(smtp_recipients, subject, body, node, temp_meme_path)
+            send_email(smtp_recipients, subject, body, node, smtp_from_domain,smtp_server, smtp_port, temp_meme_path)
             os.remove(temp_meme_path)
         else:
-            send_email(smtp_recipients, subject, body, node)
+            send_email(smtp_recipients, subject, body, node, smtp_from_domain,smtp_server, smtp_port,)
 
 
 
@@ -629,7 +494,7 @@ def meme_testing():
     #generate_meme(unsuccessful_restart_meme_path, "ONE DOES NOT SIMPLY", f"RESTART XERO SERVICES ON {xero_server}", temp_meme_path)
     subject = f"Xero Ticketing/Image Display has been Restored on {xero_server} at {local_time_str}"
     body = f"Xero Ticketing/Image Display has been Restored on {xero_server} at {local_time_str}"
-    send_email(smtp_recipients, subject, body, xero_server, temp_meme_path)
+    send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port, temp_meme_path)
     #os.remove(temp_meme_path)
 
 if __name__ == '__main__':

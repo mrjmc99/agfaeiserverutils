@@ -1,11 +1,11 @@
-# agfa-ei-utils\fun.py
+# agfaEiServerUtils\common\fun.py
 import logging
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
 
 
 # Function to generate meme
-def generate_meme(image_path, top_text, bottom_text, output_path, font_name='impact.ttf'):
+def generate_meme(image_path, top_text, bottom_text, output_path):
     logging.info("Generating meme...")
     try:
         # Open the image
@@ -17,12 +17,13 @@ def generate_meme(image_path, top_text, bottom_text, output_path, font_name='imp
         max_font_size = img.height // 10  # Set a maximum font size based on image height
 
         font_size = max_font_size
-        font = ImageFont.truetype(font_name, font_size)
+        #font = ImageFont.truetype(font_name, font_size)
+        font = ImageFont.load_default(font_size)
 
         # Reduce font size until text fits within max_width
         def fit_text_to_width(text, font):
             while draw.textbbox((0, 0), text, font=font)[2] > max_width and font_size > 10:
-                font = ImageFont.truetype(font_name, font.size - 2)
+                font = ImageFont.load_default(font.size - 2)
             return font
 
         # Adjust top text font

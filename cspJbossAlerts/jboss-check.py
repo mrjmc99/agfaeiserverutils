@@ -1,8 +1,7 @@
 import mmap
-import os
+import sys, os
 import re
 import shutil
-import time
 import smtplib
 import logging
 import requests
@@ -11,10 +10,16 @@ import uuid
 from requests.exceptions import Timeout
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import configparser
+import urllib3
+# Add the parent directory to the Python path for Common Imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.api import get_token,release_token,lookup_available_nodes
 from common.serviceNow import create_service_now_incident, attach_file_to_ticket
-import configparser
+from common.notifications import send_email
+
+# ignore insecure warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Optimize logging by limiting verbosity to important messages
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,7 +54,7 @@ smtp_port = config.get("Email", "smtp_port")
 smtp_username = config.get("Email", "smtp_username")
 smtp_password = config.get("Email", "smtp_password")
 smtp_from_domain = config.get("Email", "smtp_from_domain")
-smtp_from = f"{os.environ['COMPUTERNAME']}@{smtp_from_domain}"
+smtp_from = f"{os.environ['COMPUTERNAME']}"
 smtp_recipients_string = config.get("Email", "smtp_recipients")
 smtp_recipients = smtp_recipients_string.split(",")
 
@@ -103,14 +108,14 @@ def check_cluster_node_health(ip_address):
         response = requests.get(health_url, timeout=2)  # Set the timeout to 2 seconds
         response.raise_for_status()
         health_status = response.text.strip()
-        print(f"Node {ip_address}: {response.status_code} - {response.text.strip()}")
+        logging.info(f"Node {ip_address}: {response.status_code} - {response.text.strip()}")
         return health_status
     except Timeout:
         health_status = "Unavailable: (Starting or Stopping)"
-        print(f"Node {ip_address}: Timeout")
+        logging.error(f"Node {ip_address}: Timeout")
     except requests.RequestException as e:
         health_status = f"Unavailable: (Starting or Stopping) {str(e)}"
-        print(f"Node {ip_address}: Error - {str(e)}")
+        logging.error(f"Node {ip_address}: Error - {str(e)}")
 
     return health_status
 
@@ -127,23 +132,6 @@ def load_last_processed_event(file_path):
     except FileNotFoundError:
         return None
 
-
-def send_email( subject, message):
-    msg = MIMEText(message)
-    msg["From"] = smtp_from
-    msg["To"] = ", ".join(smtp_recipients)  # Join smtp_recipients with a comma and space
-    msg["Subject"] = subject
-
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.sendmail(smtp_from, smtp_recipients, msg.as_string())
-        server.quit()
-        print(f"Email sent to {', '.join(smtp_recipients)}")
-    except Exception as e:
-        print(f"Email sending failed to {', '.join(smtp_recipients)}: {e}")
-
-    except Exception as e:
-        logging.error(f"Error sending email: {e}")
 
 # Process Core Dump
 def process_core_dump(crashdump_file):
@@ -189,7 +177,7 @@ def process_core_dump(crashdump_file):
 
         # Create ServiceNow incident and get the incident number
         incident_number, sys_id = create_service_now_incident(
-            subject, message,
+            subject, message,'none',
             configuration_item, external_unique_id,
             urgency, impact, service_now_instance,service_now_table,service_now_api_user, service_now_api_password, assignment_group)
 
@@ -200,7 +188,8 @@ def process_core_dump(crashdump_file):
             subject += f" Ticket: {incident_number}"
 
         # send email
-        send_email(subject, message)
+        #logging.info(f"Email Body: {message}")
+        send_email(smtp_recipients, subject, message, smtp_from,smtp_from_domain,smtp_server, smtp_port, meme_path=None)
 
         # Log information
         logging.info(f"Processed core dump: {crashdump_file}, Zip file: {crashdump_log_source_path} Ticket: {incident_number}")
@@ -222,7 +211,7 @@ def check_cluster_nodes(cluster_nodes, message):
     for node in cluster_nodes:
         try:
             node_str = str(node)
-            print(f"Processing cluster node: {node_str}")
+            logging.info(f"Processing cluster node: {node_str}")
 
             ip_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', node_str)
             ip_address = ip_match.group() if ip_match else "Unknown"
@@ -236,7 +225,7 @@ def check_cluster_nodes(cluster_nodes, message):
             except (socket.herror, socket.gaierror):
                 hostname = "Unknown"
 
-            print(f"Extracted IP address: {ip_address}, Hostname: {hostname}")
+            logging.info(f"Extracted IP address: {ip_address}, Hostname: {hostname}")
 
             health_status = check_cluster_node_health(ip_address)
             new_message += f"\n{node_str} ({hostname}): {health_status}"
@@ -379,13 +368,13 @@ def process_newest_two_log_files(log_files, last_processed_event):
 
                 subject = f"JBoss EAP {event_type.capitalize()} on {os.environ['COMPUTERNAME']} at {local_timestamp}"
                 message = f"{newest_event}\nTime: {local_timestamp}\nCluster FQDN: {EI_FQDN}\n"
-
+                #logging.info(f"Email Body: {message}")
                 if cluster_nodes:
                     message += f"\nCurrent Cluster Nodes: {cluster_nodes}"
                     message = check_cluster_nodes(cluster_nodes, message)
 
                 # Send alert email
-                send_email(subject, message)
+                send_email(smtp_recipients, subject, message, smtp_from,smtp_from_domain,smtp_server, smtp_port, meme_path=None)
 
                 # **Exit after processing the first found event**
                 return newest_event
@@ -422,7 +411,7 @@ def get_sorted_log_files(log_dir):
         return []
 
 
-if __name__ == '__main__':
+def main():
     last_processed_event = load_last_processed_event(last_processed_event_file)
 
     try:
@@ -452,3 +441,6 @@ if __name__ == '__main__':
 
     except Exception as e:
         logging.error(f"Error in main loop: {e}")
+
+if __name__ == '__main__':
+    main()
