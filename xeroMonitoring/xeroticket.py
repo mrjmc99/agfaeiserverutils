@@ -678,9 +678,9 @@ def meme_testing():
 def log_testing():
     get_thread_dump(xero_server="")
     get_cluster_error_report(xero_cluster_fqdn="")
-    #get_heap_dump(xero_server="ADCVWEBPACLX001")
-    #get_service_ticket(xero_server="ADCVWEBPACLX501")
-    #ticket=get_xero_ticket(xero_server="ADCVWEBPACLX501")
+    #get_heap_dump(xero_server="")
+    #get_service_ticket(xero_server="")
+    #ticket=get_xero_ticket(xero_server="")
     #print(ticket)
 
 
