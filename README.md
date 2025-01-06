@@ -261,4 +261,4 @@ The script includes error handling for various scenarios, such as authentication
 
 ## Support and Issues
 
-For any issues or questions, please create an issue in the [GitHub repository](https://github.com/mrjmc99/agfaeiserverutils).
+For any issues or questions, please create an issue in the [GitHub repository](https://github.com/mrjmc99/agfaeiserverutils/issues).
