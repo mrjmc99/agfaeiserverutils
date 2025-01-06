@@ -1,6 +1,8 @@
 [Xero]
-xero_user = 
-xero_password = 
+xero_user =
+xero_service_user =
+xero_password =
+xero_service_password =
 xero_domain = agility
 xero_query_constraints = 
 xero_nodes = 

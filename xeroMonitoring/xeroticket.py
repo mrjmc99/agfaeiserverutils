@@ -51,7 +51,9 @@ config.read(config_file_path)
 
 # Xero API Variables
 xero_user = config.get("Xero", "xero_user")
+xero_service_user = config.get("Xero", "xero_service_user")
 xero_password = config.get("Xero", "xero_password")
+xero_service_password = config.get("Xero", "xero_service_password")
 xero_domain = config.get("Xero", "xero_domain")
 xero_query_constraints = config.get("Xero", "xero_query_constraints")
 xero_nodes = config.get("Xero", "xero_nodes").split(',')
@@ -447,20 +449,195 @@ def notify_failed_server_pending_upgrade(xero_server):
     DisabledServerManager.save_disabled_server(xero_server, "PREPARE")
     return
 
+
+def get_thread_dump(xero_server):
+    """
+        Logs into the XERO error-report page and retrieves the thread dump, saving it to a file.
+        """
+    # Create a session to store cookies
+    with requests.Session() as session:
+        # 1) Perform login to /error-report
+        login_url = f"https://{xero_server}/error-report?user={xero_service_user}&password={xero_service_password}"
+
+
+        try:
+            resp_login = session.get(login_url, verify=False, timeout=30)
+            # Check if we actually got a status code that implies success
+            logging.info(f"Login response code: {resp_login.status_code}")
+            if resp_login.status_code != 200:
+                logging.error("Login to /error-report failed or returned non-200 status code.")
+                return None
+
+            # 2) Now attempt to get the thread dump using the same session
+            thread_dump_url = f"https://{xero_server}/error-report/threadDump"
+            resp_thread = session.get(thread_dump_url, verify=False, timeout=60)
+            logging.info(f"Thread dump response code: {resp_thread.status_code}")
+
+            if resp_thread.status_code == 200 and resp_thread.text:
+                # Save the content to a file
+                thread_dump_dir = os.path.join(script_dir, "dumps")
+                os.makedirs(thread_dump_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"threadDump_{xero_server}_{timestamp}.txt"
+                filepath = os.path.join(thread_dump_dir, filename)
+
+                with open(filepath, "wb") as f:
+                    f.write(resp_thread.content)
+
+                logging.info(f"Thread dump saved at {filepath}")
+                return filepath
+            else:
+                logging.error(f"Failed to retrieve thread dump. Status: {resp_thread.status_code}")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Exception while getting thread dump: {e}")
+            return None
+
+
+def get_heap_dump(xero_server):
+    """
+    Logs into the XERO error-report page and retrieves the heap dump (zip),
+    saving it to a file.
+    works, but Servers do not have enough space to generate the heap dumps
+    """
+    with requests.Session() as session:
+        # 1) Perform "login" to /error-report using GET with credentials
+        login_url = (
+            f"https://{xero_server}/error-report?"
+            f"user={xero_service_user}&password={xero_service_password}"
+        )
+
+        try:
+            resp_login = session.get(login_url, verify=False, timeout=30)
+            logging.info(f"Login response code: {resp_login.status_code}")
+            if resp_login.status_code != 200:
+                logging.error("Login to /error-report failed or returned non-200 status code.")
+                return None
+
+            # 2) Now attempt to get the heap dump using the same session
+            heap_dump_url = f"https://{xero_server}/error-report/heapDump?download=true"
+            resp_heap = session.get(heap_dump_url, verify=False, timeout=60)
+            logging.info(f"Heap dump response code: {resp_heap.status_code}")
+
+            if resp_heap.status_code == 200 and resp_heap.content:
+                # Save the content (which should be a .zip file) to a file
+                heap_dump_dir = os.path.join(script_dir, "dumps")
+                os.makedirs(heap_dump_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"heapDump_{xero_server}_{timestamp}.zip"
+                filepath = os.path.join(heap_dump_dir, filename)
+
+                with open(filepath, "wb") as f:
+                    f.write(resp_heap.content)
+
+                logging.info(f"Heap dump saved at {filepath}")
+                return filepath
+            else:
+                logging.error(f"Failed to retrieve heap dump. Status: {resp_heap.status_code}")
+                logging.error(f"Failed to retrieve heap dump. Response: {resp_heap.text}")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Exception while getting heap dump: {e}")
+            return None
+
+
+def get_cluster_error_report(xero_cluster_fqdn):
+    """
+    Logs into the XERO error-report page and retrieves the Cluster Error report (zip),
+    saving it to a file. Uses streaming to handle large or delayed downloads, with extra logging.
+    Doesnt work, download errors out part way through.
+    """
+    with requests.Session() as session:
+        # 1) Perform "login" to /error-report using GET with credentials
+        login_url = (
+            f"https://{xero_cluster_fqdn}/error-report?"
+            f"user={xero_service_user}&password={xero_service_password}"
+        )
+        try:
+            resp_login = session.get(login_url, verify=False, timeout=30)
+            logging.info(f"Login response code: {resp_login.status_code}")
+            if resp_login.status_code != 200:
+                logging.error("Login to /error-report failed or returned non-200 status code.")
+                return None
+
+            # 2) Download the Cluster Error report via streaming
+            report_url = f"https://{xero_cluster_fqdn}/error-report/clusterzip"
+            # Increase timeouts: (connect_timeout, read_timeout)
+            # read_timeout = 600 seconds (10 minutes) or more if needed
+            resp_report = session.get(report_url, verify=False, timeout=(30, 600), stream=True)
+            logging.info(f"Cluster Error report response code: {resp_report.status_code}")
+
+            if resp_report.status_code == 200:
+                report_dir = os.path.join(script_dir, "dumps")
+                os.makedirs(report_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"cluster_error_report_{xero_cluster_fqdn}_{timestamp}.zip"
+                filepath = os.path.join(report_dir, filename)
+
+                total_bytes = 0
+                chunk_count = 0
+                chunk_size = 8192
+
+                try:
+                    with open(filepath, "wb") as f:
+                        for chunk in resp_report.iter_content(chunk_size=chunk_size):
+                            if chunk:
+                                chunk_count += 1
+                                total_bytes += len(chunk)
+                                f.write(chunk)
+                                # Log a running tally every N chunks to see progress
+                                if chunk_count % 100 == 0:
+                                    mb_downloaded = total_bytes / 1024 / 1024
+                                    logging.info(
+                                        f"Downloaded ~{mb_downloaded:.2f} MB so far (chunk {chunk_count})."
+                                    )
+
+                    logging.info(
+                        f"Cluster Error report saved at {filepath}. "
+                        f"Total size downloaded: {total_bytes / 1024 / 1024:.2f} MB"
+                    )
+                    return filepath
+
+                except requests.exceptions.ChunkedEncodingError as e:
+                    logging.error(f"Chunked encoding error: {e}")
+                    # Possibly partial file
+                    return None
+                except requests.exceptions.StreamConsumedError as e:
+                    logging.error(f"Stream consumed error: {e}")
+                    return None
+
+            else:
+                logging.error(f"Failed to retrieve Cluster Error report. Status: {resp_report.status_code}")
+                logging.error(f"Failed to retrieve Cluster Error report. Response: {resp_report.text}")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Exception while getting Cluster Error report: {e}")
+            return None
+
+
 def process_node(node):
     if get_and_verify_ticket(node):
         return
+
+    # Server is not functioning normally
     logging.info(f"Ticket Creation failed for {node}")
+
+    # Checking to see if the Server is already Disabled
     if DisabledServerManager.is_server_disabled(node):
         logging.info(f"Skipping {node} - Server is already disabled.")
         return
 
+    # Checking to see if there is an upgrade in progress
     server_in_prepare_status = check_for_upgrade(node)
     if server_in_prepare_status:
         logging.info(f"Skipping {node} - Server is in a PREPARE Status")
         notify_failed_server_pending_upgrade(node)
         return
 
+    # Beginning Restart and retest
     restart_xero_services(node)
     sleep(10)  # Wait and retry
     logging.info("Restart Completed, waiting 10 seconds to retest")
@@ -496,6 +673,18 @@ def meme_testing():
     send_email(smtp_recipients, subject, body, xero_server, smtp_from_domain,smtp_server, smtp_port, temp_meme_path)
     #os.remove(temp_meme_path)
 
+
+
+def log_testing():
+    get_thread_dump(xero_server="")
+    get_cluster_error_report(xero_cluster_fqdn="")
+    #get_heap_dump(xero_server="ADCVWEBPACLX001")
+    #get_service_ticket(xero_server="ADCVWEBPACLX501")
+    #ticket=get_xero_ticket(xero_server="ADCVWEBPACLX501")
+    #print(ticket)
+
+
 if __name__ == '__main__':
     main()
     #meme_testing()
+    #log_testing()
