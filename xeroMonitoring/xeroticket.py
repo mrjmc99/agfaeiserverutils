@@ -1,4 +1,4 @@
-import base64
+
 import json
 import urllib
 import ast
@@ -13,7 +13,6 @@ from datetime import datetime
 import concurrent.futures
 import oracledb as cx_Oracle
 import urllib3
-import textwrap
 # Add the parent directory to the Python path for Common Imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.notifications import send_email
