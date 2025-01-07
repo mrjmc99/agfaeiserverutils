@@ -1,6 +1,6 @@
 # Agfa Enterprise Imaging Scripts
 
-This repository contains **three** primary Python scripts, each designed to manage or monitor different aspects of an Agfa Enterprise Imaging environment. All three scripts rely on a **common code base** found in the `common` folder (or similarly named directory) for shared functionality such as configuration loading, email sending, and ServiceNow integrations.
+This repository contains **three** primary Python scripts, each designed to manage or monitor different aspects of an Agfa Enterprise Imaging environment. All three scripts rely on a **common code base** found in the `common` folder for shared functionality such as EI API calls, email sending, and ServiceNow integrations.
 
 ---
 
