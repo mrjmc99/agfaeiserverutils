@@ -240,6 +240,7 @@ def main():
 
                     # logging.info(f"Email Body: {message}")
                     if cluster_nodes:
+                        body += f"\nEI Cluster: {EI_FQDN.upper()}"
                         body += f"\nCurrent Cluster Nodes: {cluster_nodes}"
 
 
