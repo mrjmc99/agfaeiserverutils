@@ -38,8 +38,6 @@ load_dotenv(common_dotenv_path)
 load_dotenv(script_dotenv_path)
 
 
-
-
 # -- AGFA / Error Report Variables --
 EI_FQDN = os.getenv("EI_FQDN")
 EI_USER = os.getenv("EI_USER")
