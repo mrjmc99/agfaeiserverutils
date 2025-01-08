@@ -2,24 +2,19 @@ import mmap
 import sys, os
 import re
 import shutil
-import smtplib
 import logging
 import requests
 import socket
 import uuid
 from requests.exceptions import Timeout
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-import configparser
-import urllib3
+from dotenv import load_dotenv
 # Add the parent directory to the Python path for Common Imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.api import get_token,release_token,lookup_available_nodes
 from common.serviceNow import create_service_now_incident, attach_file_to_ticket
 from common.notifications import send_email
 
-# ignore insecure warnings
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Optimize logging by limiting verbosity to important messages
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -30,53 +25,51 @@ event_pattern = re.compile(r".*?(JBoss EAP.*?(started|stopped)|Timeout reached a
 # Get the absolute path of the script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Construct the absolute path of the configuration file
-config_file_path = os.path.join(script_dir, "jboss-check-config.ini")
 
-# Load the configuration file
-config = configparser.ConfigParser()
-config.read(config_file_path)
+# Set env files to load
+common_dotenv_path = os.path.join(os.path.dirname(__file__), '..', 'common.env')
+script_dotenv_path = os.path.join(os.path.dirname(__file__), '..', 'jboss-check.env')
 
-#EI API Variables
-EI_FQDN = config.get("Agfa", "EI_FQDN")
-EI_USER = config.get("Agfa", "EI_USER")
-EI_PASSWORD = config.get("Agfa", "EI_PASSWORD")
-log_dir = config.get("Agfa", "log_dir")
-EI_jboss_path = config.get("Agfa", "EI_jboss_path")
-crashdump_logs_folder = config.get("Agfa", "crashdump_logs_folder")
+# Load env files
+load_dotenv(common_dotenv_path)
+load_dotenv(script_dotenv_path)
+
+# -- AGFA / Jboss Check Variables --
+EI_FQDN = os.getenv("EI_FQDN")
+EI_USER = os.getenv("EI_USER")
+EI_PASSWORD = os.getenv("EI_PASSWORD")
+log_dir = os.getenv("LOG_DIR")
+EI_jboss_path = os.getenv("EI_JBOSS_PATH")
+crashdump_logs_folder = os.getenv("CRASHDUMP_LOGS_FOLDER")
 # Construct the absolute path of the last_processed_event_file
-last_processed_event_file = os.path.join(script_dir, config.get("Agfa", "last_processed_event_file"))
+last_processed_event_file = os.path.join(os.path.dirname(__file__), os.getenv("LAST_PROCESSED_EVENT_FILE"))
 TOKEN = None
 
-#email variables
-smtp_server = config.get("Email", "smtp_server")
-smtp_port = config.get("Email", "smtp_port")
-smtp_username = config.get("Email", "smtp_username")
-smtp_password = config.get("Email", "smtp_password")
-smtp_from_domain = config.get("Email", "smtp_from_domain")
+# Email variables
+smtp_server = os.getenv("SMTP_SERVER")
+smtp_port = int(os.getenv("SMTP_PORT", 25))  # Default to port 25 if not specified
+smtp_username = os.getenv("SMTP_USERNAME")
+smtp_password = os.getenv("SMTP_PASSWORD")
+smtp_from_domain = os.getenv("SMTP_FROM_DOMAIN")
 smtp_from = f"{os.environ['COMPUTERNAME']}"
-smtp_recipients_string = config.get("Email", "smtp_recipients")
-smtp_recipients = smtp_recipients_string.split(",")
+smtp_recipients = os.getenv("SMTP_RECIPIENTS", "").split(",")
 
-#service now variables
-service_now_instance = config.get("ServiceNow", "instance")
-service_now_table = config.get("ServiceNow", "table")
-service_now_attachment_table = config.get("ServiceNow", "attachment_table")
-service_now_api_user = config.get("ServiceNow", "api_user")
-service_now_api_password = config.get("ServiceNow", "api_password")
-ticket_type = config.get("ServiceNow", "ticket_type")
-request_u_description = config.get("ServiceNow", "request_u_description")
-request_catalog_item = config.get("ServiceNow", "request_catalog_item")
-configuration_item = config.get("ServiceNow", "configuration_item")
-assignment_group = config.get("ServiceNow", "assignment_group")
-assignee = config.get("ServiceNow", "assignee")
-business_hours_start_time = config.get("ServiceNow", "business_hours_start_time")
-business_hours_end_time = config.get("ServiceNow", "business_hours_end_time")
-after_hours_urgency = config.get("ServiceNow", "after_hours_urgency")
-after_hours_impact = config.get("ServiceNow", "after_hours_impact")
-business_hours_urgency = config.get("ServiceNow", "business_hours_urgency")
-business_hours_impact = config.get("ServiceNow", "business_hours_impact")
-
+# ServiceNow variables
+service_now_instance = os.getenv("SN_INSTANCE")
+service_now_table = os.getenv("SN_TABLE")
+service_now_attachment_table = os.getenv("SN_ATTACHMENT_TABLE")
+service_now_api_user = os.getenv("SN_API_USER")
+service_now_api_password = os.getenv("SN_API_PASSWORD")
+ticket_type = os.getenv("SN_TICKET_TYPE")
+configuration_item = os.getenv("SN_CONFIGURATION_ITEM")
+assignment_group = os.getenv("SN_ASSIGNMENT_GROUP")
+assignee = os.getenv("SN_ASSIGNEE")
+business_hours_start_time = os.getenv("SN_BUSINESS_HOURS_START_TIME")
+business_hours_end_time = os.getenv("SN_BUSINESS_HOURS_END_TIME")
+after_hours_urgency = os.getenv("SN_AFTER_HOURS_URGENCY")
+after_hours_impact = os.getenv("SN_AFTER_HOURS_IMPACT")
+business_hours_urgency = os.getenv("SN_BUSINESS_HOURS_URGENCY")
+business_hours_impact = os.getenv("SN_BUSINESS_HOURS_IMPACT")
 
 
 # Get the current time and day of the week
@@ -95,10 +88,6 @@ impact = after_hours_urgency   # Default value for after hours and weekends
 if business_hours_start <= current_time <= business_hours_end and current_day < 5:  # Monday to Friday
     urgency = business_hours_urgency
     impact = business_hours_impact
-
-
-
-
 
 
 def check_cluster_node_health(ip_address):
@@ -164,7 +153,7 @@ def process_core_dump(crashdump_file):
 
         # setup email variables
         subject = f"JBoss EAP Crashed on {os.environ['COMPUTERNAME']} at {crash_timestamp}"
-        message = f"JBoss EAP Crashed\nTime: {crash_timestamp}\nCrash dump file: {crashdump_file}\nCluster FQDN: {EI_FQDN}\n"
+        message = f"JBoss EAP Crashed\nTime: {crash_timestamp}\nCrash dump file: {crashdump_file}\nCluster FQDN: {EI_FQDN.upper()}\n"
 
         # Check cluster health
         cluster_nodes = lookup_available_nodes(EI_FQDN,EI_USER,EI_PASSWORD)
@@ -196,11 +185,6 @@ def process_core_dump(crashdump_file):
 
     except Exception as e:
         logging.error(f"Error processing core dump: {e}")
-
-
-
-
-
 
 
 # function to resolve and check cluster nodes
@@ -236,9 +220,6 @@ def check_cluster_nodes(cluster_nodes, message):
             raise
 
     return new_message  # Return the new string
-
-
-
 
 
 def quick_search_with_mmap(file_path):
@@ -284,6 +265,7 @@ def quick_search_with_mmap(file_path):
 
     return None, None  # Return None if no match is found
 
+
 def extract_timestamp_from_line(timestamp_line):
     """Extract timestamp from a given log line."""
     time_start = timestamp_line.find('time="') + 6
@@ -304,7 +286,7 @@ def convert_to_local_time(utc_timestamp):
     try:
         utc_dt = datetime.strptime(utc_timestamp[:-6], dt_format)
         local_dt = utc_dt - timedelta(minutes=int((datetime.utcnow() - datetime.now()).total_seconds() / 60))
-        return local_dt.strftime("%H:%M:%S %m/%d/%y")
+        return local_dt.strftime("%H:%M:%S %m/%d/%Y")
     except ValueError as ve:
         logging.error(f"Error parsing timestamp: {ve}")
         return None
@@ -367,7 +349,7 @@ def process_newest_two_log_files(log_files, last_processed_event):
                 cluster_nodes = lookup_available_nodes(EI_FQDN,EI_USER,EI_PASSWORD)
 
                 subject = f"JBoss EAP {event_type.capitalize()} on {os.environ['COMPUTERNAME']} at {local_timestamp}"
-                message = f"{newest_event}\nTime: {local_timestamp}\nCluster FQDN: {EI_FQDN}\n"
+                message = f"{newest_event}\nTime: {local_timestamp}\nCluster FQDN: {EI_FQDN.upper()}\n"
                 #logging.info(f"Email Body: {message}")
                 if cluster_nodes:
                     message += f"\nCurrent Cluster Nodes: {cluster_nodes}"
@@ -389,10 +371,6 @@ def process_newest_two_log_files(log_files, last_processed_event):
     # If no new event is found in both files, return the last processed event
     logging.info("No new event found in the newest two log files.")
     return last_processed_event
-
-
-
-
 
 
 # Helper function to get sorted log files and return full paths
@@ -424,11 +402,6 @@ def main():
             # Ensure we are processing the newest two log files
             last_processed_event = process_newest_two_log_files(log_files, last_processed_event)
 
-            # Ensure we are processing only the newest log file
-            #newest_log_file = log_files[0]
-            #logging.info(f'Newest log file: {newest_log_file}')
-            #last_processed_event = process_newest_log_file(newest_log_file, last_processed_event)
-
             # Save the last processed event to the file
             save_last_processed_event(last_processed_event, last_processed_event_file)
 
@@ -441,6 +414,7 @@ def main():
 
     except Exception as e:
         logging.error(f"Error in main loop: {e}")
+
 
 if __name__ == '__main__':
     main()

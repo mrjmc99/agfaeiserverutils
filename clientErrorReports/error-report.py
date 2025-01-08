@@ -192,19 +192,15 @@ def main():
 
                     computer_name = os.path.dirname(relative_path).lstrip("\\")
                     local_time = datetime.fromtimestamp(original_timestamp)
-                    local_time_str = local_time.strftime('%Y-%m-%d %H:%M:%S')
+                    local_time_str = local_time.strftime('%H:%M:%S %m/%d/%Y')
                     subject = f"Client Error Report for {computer_name} at {local_time_str} (Ticket Creation Failure)"
-                    body = f"EI Error Report Comment:\n{comment_content}\nUserID: {user_code}\nWorkstation: {computer_name}"
+                    body = f"EI Error Report Comment:\n{comment_content}\nUserID: {user_code}\nWorkstation: {computer_name}\nTime: {local_time_str}\nEI Server: {smtp_from}"
                     ticket_summary = f"Client Error Report for {computer_name} at {local_time_str}"
                     ticket_description = body
                     affected_user_id = user_code
                     external_unique_id = str(uuid.uuid4())
-                    # Send zip to ERA if enabled
-                    if use_ERA:
-                        era_url = send_file_to_ERA_with_curl(destination_path)
-                        if era_url:
-                            body += f"\n\nERA Url= {era_url}"
-                    # Check if the item should be excluded
+
+                    # Check if the item should be excluded from Ticket Creation
                     if affected_user_id and affected_user_id.lower() in [code.lower() for code in excluded_user_codes] or \
                             computer_name.lower() in [name.lower() for name in excluded_computer_names]:
                         logging.info(
@@ -242,6 +238,12 @@ def main():
                     if cluster_nodes:
                         body += f"\nEI Cluster: {EI_FQDN.upper()}"
                         body += f"\nCurrent Cluster Nodes: {cluster_nodes}"
+
+                    # Send zip to ERA if enabled
+                    if use_ERA:
+                        era_url = send_file_to_ERA_with_curl(destination_path)
+                        if era_url:
+                            body += f"\n\nERA Url= {era_url}"
 
 
                     # send email
