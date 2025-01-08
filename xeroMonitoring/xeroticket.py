@@ -4,7 +4,6 @@ import urllib
 import ast
 import requests
 import os, sys
-import configparser
 import paramiko
 import logging
 import uuid
@@ -13,6 +12,7 @@ from datetime import datetime
 import concurrent.futures
 import oracledb as cx_Oracle
 import urllib3
+from dotenv import load_dotenv
 # Add the parent directory to the Python path for Common Imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.notifications import send_email
@@ -41,87 +41,83 @@ logging.basicConfig(
     ]
 )
 
+# Set env files to load
+common_dotenv_path = os.path.join(os.path.dirname(__file__), '..', 'common.env')
+script_dotenv_path = os.path.join(os.path.dirname(__file__), '..', 'xeroticket.env')
 
-# Construct the absolute path of the configuration file
-config_file_path = os.path.join(script_dir, "xeroticket.ini")
+# Load env files
+load_dotenv(common_dotenv_path)
+load_dotenv(script_dotenv_path)
 
-# Load the configuration file
-config = configparser.ConfigParser()
-config.read(config_file_path)
 
 # Xero API Variables
-xero_user = config.get("Xero", "xero_user")
-xero_service_user = config.get("Xero", "xero_service_user")
-xero_password = config.get("Xero", "xero_password")
-xero_service_password = config.get("Xero", "xero_service_password")
-xero_domain = config.get("Xero", "xero_domain")
-xero_query_constraints = config.get("Xero", "xero_query_constraints")
-xero_nodes = config.get("Xero", "xero_nodes").split(',')
-xero_restart_command = config.get("Xero", "xero_restart_command")
-xero_haproxy_restart_command = config.get("Xero", "xero_haproxy_restart_command")
-xero_disable_command = config.get("Xero", "xero_disable_command")
-xero_wado_purge_command = config.get("Xero", "xero_wado_purge_command")
-xero_server_user = config.get("Xero", "xero_server_user")
-xero_server_private_key = config.get("Xero", "xero_server_private_key")
-xero_get_ticket_timeout = int(config.get("Xero", "xero_get_ticket_timeout"))
-xero_ticket_validation_timeout = int(config.get("Xero", "xero_ticket_validation_timeout"))
-xero_retry_attempts = int(config.get("Xero", "xero_retry_attempts"))
-xero_wado = ast.literal_eval(config.get("Xero", "xero_wado"))
-validation_study_PatientID = config.get("Xero", "validation_study_PatientID")
-validation_study_AccessionNumber = config.get("Xero", "validation_study_AccessionNumber")
-xero_theme = config.get("Xero", "theme")
-disabled_servers_file = os.path.join(script_dir, config.get("Xero", "disabled_servers_file"))
-cluster_db_host = config.get("Xero", "cluster_db_host")
-cluster_db_port = config.get("Xero", "cluster_db_port")
-cluster_db_service_name = config.get("Xero", "cluster_db_service_name")
-cluster_db_user = config.get("Xero", "cluster_db_user")
-cluster_db_password = config.get("Xero", "cluster_db_password")
+xero_user = os.getenv("XERO_USER")
+xero_service_user = os.getenv("XERO_SERVICE_USER")
+xero_password = os.getenv("XERO_PASSWORD")
+xero_service_password = os.getenv("XERO_SERVICE_PASSWORD")
+xero_domain = os.getenv("XERO_DOMAIN")
+xero_nodes = os.getenv("XERO_NODES", "").split(',')
+xero_restart_command = os.getenv("XERO_RESTART_COMMAND")
+xero_haproxy_restart_command = os.getenv("XERO_HAPROXY_RESTART_COMMAND")
+xero_disable_command = os.getenv("XERO_DISABLE_COMMAND")
+xero_wado_purge_command = os.getenv("XERO_WADO_PURGE_COMMAND")
+xero_server_user = os.getenv("XERO_SERVER_USER")
+xero_server_private_key = os.getenv("XERO_SERVER_PRIVATE_KEY")
+xero_get_ticket_timeout = int(os.getenv("XERO_GET_TICKET_TIMEOUT", 5))
+xero_ticket_validation_timeout = int(os.getenv("XERO_TICKET_VALIDATION_TIMEOUT", 10))
+xero_retry_attempts = int(os.getenv("XERO_RETRY_ATTEMPTS", 2))
+xero_wado = ast.literal_eval(os.getenv("XERO_WADO", "False"))
+validation_study_PatientID = os.getenv("VALIDATION_STUDY_PATIENTID")
+validation_study_AccessionNumber = os.getenv("VALIDATION_STUDY_ACCESSIONNUMBER")
+xero_theme = os.getenv("XERO_THEME")
+disabled_servers_file = os.path.join(os.path.dirname(__file__), os.getenv("DISABLED_SERVERS_FILE"))
+
+# Database Variables
+cluster_db_host = os.getenv("CLUSTER_DB_HOST")
+cluster_db_port = os.getenv("CLUSTER_DB_PORT")
+cluster_db_service_name = os.getenv("CLUSTER_DB_SERVICE_NAME")
+cluster_db_user = os.getenv("CLUSTER_DB_USER")
+cluster_db_password = os.getenv("CLUSTER_DB_PASSWORD")
 
 
 query_constraints = f"PatientID={validation_study_PatientID}, AccessionNumber={validation_study_AccessionNumber}"
 display_vars = f"theme={xero_theme}, PatientID={validation_study_PatientID}, AccessionNumber={validation_study_AccessionNumber}"
 
 
+# Email variables
+smtp_server = os.getenv("SMTP_SERVER")
+smtp_port = int(os.getenv("SMTP_PORT", 25))  # Default to port 25 if not specified
+smtp_username = os.getenv("SMTP_USERNAME")
+smtp_password = os.getenv("SMTP_PASSWORD")
+smtp_from_domain = os.getenv("SMTP_FROM_DOMAIN")
+smtp_recipients = os.getenv("SMTP_RECIPIENTS", "").split(",")
 
-# email variables
-smtp_server = config.get("Email", "smtp_server")
-smtp_port = int(config.get("Email", "smtp_port"))
-smtp_username = config.get("Email", "smtp_username")
-smtp_password = config.get("Email", "smtp_password")
-smtp_from_domain = config.get("Email", "smtp_from_domain")
-smtp_recipients_string = config.get("Email", "smtp_recipients")
-smtp_recipients = smtp_recipients_string.split(",")
-
-# meme variables
-use_memes = config.getboolean("Meme", "use_memes")
+# Meme Variables
+use_memes = ast.literal_eval(os.getenv("USE_MEMES", "True"))
 successful_restart_meme_path = os.path.join(
-    common_dir,
-    'memes',
-    config.get("Meme", "successful_restart_meme")
+    common_dir, 'memes', os.getenv("SUCCESSFUL_RESTART_MEME")
 )
 unsuccessful_restart_meme_path = os.path.join(
-    common_dir,
-    'memes',
-    config.get("Meme", "unsuccessful_restart_meme")
+    common_dir, 'memes', os.getenv("UNSUCCESSFUL_RESTART_MEME")
 )
 temp_meme_path = os.path.join(script_dir, os.path.dirname('memes'), 'temp_meme.jpg')
 
-# service now variables
-service_now_instance = config.get("ServiceNow", "instance")
-service_now_table = config.get("ServiceNow", "table")
-service_now_api_user = config.get("ServiceNow", "api_user")
-service_now_api_password = config.get("ServiceNow", "api_password")
-ticket_type = config.get("ServiceNow", "ticket_type")
-configuration_item = config.get("ServiceNow", "configuration_item")
-assignment_group = config.get("ServiceNow", "assignment_group")
-assignee = config.get("ServiceNow", "assignee")
-business_hours_start_time = config.get("ServiceNow", "business_hours_start_time")
-business_hours_end_time = config.get("ServiceNow", "business_hours_end_time")
-after_hours_urgency = config.get("ServiceNow", "after_hours_urgency")
-after_hours_impact = config.get("ServiceNow", "after_hours_impact")
-business_hours_urgency = config.get("ServiceNow", "business_hours_urgency")
-business_hours_impact = config.get("ServiceNow", "business_hours_impact")
-
+# ServiceNow variables
+service_now_instance = os.getenv("SN_INSTANCE")
+service_now_table = os.getenv("SN_TABLE")
+service_now_attachment_table = os.getenv("SN_ATTACHMENT_TABLE")
+service_now_api_user = os.getenv("SN_API_USER")
+service_now_api_password = os.getenv("SN_API_PASSWORD")
+ticket_type = os.getenv("SN_TICKET_TYPE")
+configuration_item = os.getenv("SN_CONFIGURATION_ITEM")
+assignment_group = os.getenv("SN_ASSIGNMENT_GROUP")
+assignee = os.getenv("SN_ASSIGNEE")
+business_hours_start_time = os.getenv("SN_BUSINESS_HOURS_START_TIME")
+business_hours_end_time = os.getenv("SN_BUSINESS_HOURS_END_TIME")
+after_hours_urgency = os.getenv("SN_AFTER_HOURS_URGENCY")
+after_hours_impact = os.getenv("SN_AFTER_HOURS_IMPACT")
+business_hours_urgency = os.getenv("SN_BUSINESS_HOURS_URGENCY")
+business_hours_impact = os.getenv("SN_BUSINESS_HOURS_IMPACT")
 
 
 # Get the current time and day of the week
@@ -141,7 +137,8 @@ if business_hours_start <= current_time <= business_hours_end and current_day < 
     urgency = business_hours_urgency
     impact = business_hours_impact
 
-local_time_str = datetime.now().time()
+local_time = datetime.now()
+local_time_str = local_time.strftime('%H:%M:%S %m/%d/%Y')
 
 
 # disabled server management
@@ -179,7 +176,8 @@ class DisabledServerManager:
         servers = DisabledServerManager.load_disabled_servers()
         if xero_server in servers:
             incident = servers[xero_server]
-            local_time_str = datetime.now().time()
+            local_time = datetime.now()
+            local_time_str = local_time.strftime('%H:%M:%S %m/%d/%Y')
             if incident == 'PREPARE':
                 subject = f"Xero Ticketing/Image Display has been Restored on {xero_server} at {local_time_str}"
                 body = f"Xero Ticketing/Image Display has been Restored on {xero_server} at {local_time_str}"
@@ -198,7 +196,8 @@ class DisabledServerManager:
 
 
 def create_and_send_failure_incident(xero_server, failure_reason):
-    local_time_str = datetime.now().time()
+    local_time = datetime.now()
+    local_time_str = local_time.strftime('%H:%M:%S %m/%d/%Y')
     subject = f"Xero Ticketing/Image Display is failing on {xero_server} at {local_time_str} ({failure_reason})"
     body = f"Xero Ticketing/Image Display is failing on {xero_server} at {local_time_str}\nPlease investigate."
     incident_summary = subject
@@ -394,7 +393,7 @@ def disable_xero_server(xero_server):
     else:
         logging.info(f"Xero server Disabling successfully: {result}")
         subject = f"Xero Ticketing/Image Display has been Disabled on {xero_server} at {local_time_str}"
-        body = f"Xero Ticketing/Image Display has been Disabled on {xero_server} at {local_time_str}\nTo enable the server run the following command on the xero server: sudo agility-haproxy restart"
+        body = f"Xero Ticketing/Image Display has been Disabled on {xero_server} at {local_time_str}\nTo enable the server run the following command on the xero server: sudo service agility-haproxy restart"
         #body = f"Xero Ticketing/Image Display has been Disabled on {xero_server} at {local_time_str}\nTo manually purge cache run the following command: sudo /bin/nice -n +15 /bin/find /wado2cache* -mmin +240 -delete \nTo enable the server run the following command on the xero server: sudo agility-haproxy start"
         incident_summary = f"Xero Ticketing/Image Display is failing on {xero_server} at {local_time_str} (Server Disabled)"
         incident_description = body

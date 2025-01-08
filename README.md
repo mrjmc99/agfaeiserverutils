@@ -28,7 +28,7 @@ This repository contains **three** primary Python scripts, each designed to mana
    - Automates creation and verification of Xero tickets, checks server status, restarts or disables servers, and integrates with ServiceNow for incident creation.
 
 All scripts share some **common** functionalities:
-- Reading from an `.ini` config file for environment-specific settings.
+- Reading from an `.env` file for environment-specific settings.
 - Sending email notifications.
 - Creating incidents or requests in ServiceNow.
 - Logging activities to a log file for troubleshooting.
@@ -47,8 +47,8 @@ All scripts share some **common** functionalities:
    
 Make sure to do this within a virtual environment (venv) or system-wide, depending on your environment.
 
-Configuration Files
-Each script expects its own .ini file (e.g., error-report-config.ini, jboss-check-config.ini, xeroticket.ini), but they share a similar structure:
+Environment Files
+Each script expects its own .env file (e.g., error-report.env, jboss-check.env, xeroticket.env), but they share a similar structure:
 
 Email server settings
 ServiceNow credentials
@@ -83,7 +83,7 @@ Before running the script, ensure the following:
 
 ## Configuration
 
-The script uses a configuration file named `error-report-config.ini` to store various parameters. Ensure that this file is present in the same directory as the script. Example configuration parameters include:
+The script uses a Environment file named `error-report.env` to store various parameters. Ensure that this file is present in the same directory as the script. Example Environment parameters include:
 
 - Agfa Variables
 - Email Variables
@@ -98,11 +98,11 @@ Run the script using the following command:
 python error_report_script.py
 ```
 
-The script will process error reports, create incidents in ServiceNow, and send email notifications based on the configuration.
+The script will process error reports, create incidents in ServiceNow, and send email notifications based on the Environment.
 
 ## Script Logic
 
-1. **Configuration Loading**: Load configuration parameters from the `error-report-config.ini` file.
+1. **Configuration Loading**: Load Environment parameters from the `error-report.env` file.
 
 2. **Business Hours Check**: Determine the urgency and impact based on business hours.
 
@@ -149,9 +149,9 @@ A user that has minimal permissions in EI, for example I created an agility user
 
 ## Configuration
 
-The script uses a configuration file named **jboss-check-config.ini** for various settings. Ensure that the configuration file is correctly set up before running the script.
+The script uses a Environment file named **jboss-check.env** for various settings. Ensure that the Environment file is correctly set up before running the script.
 
-### Configuration Parameters
+### Environment Parameters
 
 - **Agfa Section:**
   - `EI_FQDN`: FQDN of the Enterprise Imaging (EI) API.
@@ -189,7 +189,7 @@ The script uses a configuration file named **jboss-check-config.ini** for variou
   
 ## Usage
 
-1. Ensure that the script prerequisites are met, and the configuration file is correctly configured.
+1. Ensure that the script prerequisites are met, and the Environment file is correctly configured.
 
 2. Test the script using Python:
 
@@ -212,7 +212,7 @@ This script automates the management of Xero tickets by interacting with the Xer
 
 ## Configuration
 
-The script uses a configuration file named `xeroticket.ini` to store various parameters. Ensure that this file is present in the same directory as the script. Example configuration parameters include:
+The script uses a Environment file named `xeroticket.env` to store various parameters. Ensure that this file is present in the same directory as the script. Example Environment parameters include:
 
 - Xero API Variables
 - EI Cluster DB Variables
@@ -249,7 +249,6 @@ The script performs the following actions:
 
 The script is structured as follows:
 
-- **Configuration Loading**: Loads configuration parameters from `xeroticket.ini`.
 - **Xero Ticket Management**: Obtains, verifies, and manages Xero tickets for specified servers.
 - **Remote Server Actions**: Restarts or disables Xero servers based on verification results.
 - **ServiceNow Integration**: Creates incidents in ServiceNow based on server actions.
