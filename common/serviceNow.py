@@ -108,12 +108,9 @@ def create_service_now_request(summary, description, affected_user_id,service_no
         "u_requested_by_user_id": affected_user_id,
         "u_affected_user_id": affected_user_id,
         #"u_phone": '123-456-7890',
-        #"u_email": 'pacstest@adventhealth.com',
+        #"u_email": 'pacstest@pacs.com',
         "u_catalog_item": request_catalog_item,
         "u_description": request_u_description,
-        #"u_variables": f"short_description::{summary}::description::{description}::phone::123-456-7890::fax::::affected_user"
-        #               f"::{affected_user_id}::email::::requester::{affected_user_id}::requester_location"
-        #               f"::f4fc4d43dbc3a200ec73f81ebf961972::affected_user_location::f4fc4d43dbc3a200ec73f81ebf961972"
         "u_variables": f"assignment_group::{assignment_group}::priority::3::assignee"
                        f"::::short_description::{summary}"
                        f"::description::{description}"
