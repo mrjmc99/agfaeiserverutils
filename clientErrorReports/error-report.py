@@ -2,30 +2,20 @@ import logging
 import os, sys
 import shutil
 import zipfile
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
 from time import sleep
-import requests
 import uuid
-import configparser
 import re
 import subprocess
+from dotenv import load_dotenv
 
 # Add the parent directory to the Python path for Common Imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.serviceNow import create_service_now_incident, attach_file_to_ticket,create_service_now_request
 from common.notifications import send_email
-
+from common.api import lookup_available_nodes
 # Get the absolute path of the script
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Construct the absolute path of the configuration file
-config_file_path = os.path.join(script_dir, "error-report-config.ini")
-
-# Load the configuration file
-config = configparser.ConfigParser()
-config.read(config_file_path)
 
 # Set up logging
 log_file_path = os.path.join(script_dir, "error_report.log")
@@ -39,46 +29,60 @@ logging.basicConfig(
 )
 
 
-# agfa variables
-error_report_repo = config.get("Agfa", "error_report_repo")
-source_folder = config.get("Agfa", "source_folder")
-search_term = config.get("Agfa", "search_term")
-ERA_server = config.get("Agfa", "ERA_server")
-use_ERA = config.get("Agfa", "use_ERA").lower() == "true"
+# Set env files to load
+common_dotenv_path = os.path.join(os.path.dirname(__file__), '..', 'common.env')
+script_dotenv_path = os.path.join(os.path.dirname(__file__), '..', 'error-report.env')
+
+# Load env files
+load_dotenv(common_dotenv_path)
+load_dotenv(script_dotenv_path)
 
 
-# email variables
-smtp_server = config.get("Email", "smtp_server")
-smtp_port = int(config.get("Email", "smtp_port"))
-smtp_username = config.get("Email", "smtp_username")
-smtp_password = config.get("Email", "smtp_password")
-smtp_from_domain = config.get("Email", "smtp_from_domain")
+
+
+# -- AGFA / Error Report Variables --
+EI_FQDN = os.getenv("EI_FQDN")
+EI_USER = os.getenv("EI_USER")
+EI_PASSWORD = os.getenv("EI_PASSWORD")
+error_report_repo = os.getenv("ERROR_REPORT_REPO", "E:\\error-report-repo")
+source_folder = os.getenv("SOURCE_FOLDER", "C:\\Agfa\\IMPAX_Agility\\error-report")
+search_term = os.getenv("SEARCH_TERM", "comment")
+ERA_server = os.getenv("ERA_SERVER", "")
+use_ERA = os.getenv("USE_ERA", "false").lower() == "true"
+excluded_computer_names_path = os.path.join(script_dir, os.getenv("EXCLUDED_COMPUTER_NAMES_PATH", "excluded_computer_names.txt"))
+excluded_user_codes_path = os.path.join(script_dir, os.getenv("EXCLUDED_USER_CODES_PATH", "excluded_user_codes.txt"))
+
+# -- Email Variables --
+smtp_server = os.getenv("SMTP_SERVER", "")
+smtp_port = int(os.getenv("SMTP_PORT", "25"))         # Convert to int
+smtp_username = os.getenv("SMTP_USERNAME", "")
+smtp_password = os.getenv("SMTP_PASSWORD", "None")
+smtp_from_domain = os.getenv("SMTP_FROM_DOMAIN", "")
 smtp_from = f"{os.environ['COMPUTERNAME']}"
-smtp_recipients_string = config.get("Email", "smtp_recipients")
-smtp_recipients = smtp_recipients_string.split(",")
+# Parse comma-separated recipients into a list
+smtp_recipients_string = os.getenv("SMTP_RECIPIENTS", "")
+smtp_recipients = [r.strip() for r in smtp_recipients_string.split(",") if r.strip()]
 
-# service now variables
-service_now_instance = config.get("ServiceNow", "instance")
-service_now_table = config.get("ServiceNow", "table")
-service_now_attachment_table = config.get("ServiceNow", "attachment_table")
-service_now_api_user = config.get("ServiceNow", "api_user")
-service_now_api_password = config.get("ServiceNow", "api_password")
-ticket_type = config.get("ServiceNow", "ticket_type")
-configuration_item = config.get("ServiceNow", "configuration_item")
-assignment_group = config.get("ServiceNow", "assignment_group")
-assignee = config.get("ServiceNow", "assignee")
-request_u_description = config.get("ServiceNow", "request_u_description")
-request_catalog_item = config.get("ServiceNow", "request_catalog_item")
-business_hours_start_time = config.get("ServiceNow", "business_hours_start_time")
-business_hours_end_time = config.get("ServiceNow", "business_hours_end_time")
-after_hours_urgency = config.get("ServiceNow", "after_hours_urgency")
-after_hours_impact = config.get("ServiceNow", "after_hours_impact")
-business_hours_urgency = config.get("ServiceNow", "business_hours_urgency")
-business_hours_impact = config.get("ServiceNow", "business_hours_impact")
+# -- ServiceNow (Common) --
+service_now_api_user = os.getenv("SN_API_USER", "")
+service_now_api_password = os.getenv("SN_API_PASSWORD", "")
+service_now_instance = os.getenv("SN_INSTANCE", "")
+business_hours_start_time = os.getenv("SN_BUSINESS_HOURS_START_TIME", "08:00:00")
+business_hours_end_time = os.getenv("SN_BUSINESS_HOURS_END_TIME", "17:00:00")
 
-# excluded items variables
-excluded_computer_names_path = os.path.join(script_dir, config.get("Excludeditems", "excluded_computer_names_path"))
-excluded_user_codes_path = os.path.join(script_dir, config.get("Excludeditems", "excluded_user_codes_path"))
+# -- ServiceNow (Error Report–Specific) --
+service_now_table = os.getenv("SN_TABLE", "")
+service_now_attachment_table = os.getenv("SN_ATTACHMENT_TABLE", "")
+ticket_type = os.getenv("SN_TICKET_TYPE", "request")
+configuration_item = os.getenv("SN_CONFIGURATION_ITEM", "")
+request_u_description = os.getenv("SN_REQUEST_U_DESCRIPTION", "")
+request_catalog_item = os.getenv("SN_REQUEST_CATALOG_ITEM", "")
+assignment_group = os.getenv("SN_ASSIGNMENT_GROUP", "")
+assignee = os.getenv("SN_ASSIGNEE", "")
+after_hours_urgency = os.getenv("SN_AFTER_HOURS_URGENCY", "4")
+after_hours_impact = os.getenv("SN_AFTER_HOURS_IMPACT", "4")
+business_hours_urgency = os.getenv("SN_BUSINESS_HOURS_URGENCY", "3")
+business_hours_impact = os.getenv("SN_BUSINESS_HOURS_IMPACT", "3")
 
 # Ensure excluded items files exist, create them if they don't
 if not os.path.exists(excluded_computer_names_path):
@@ -232,6 +236,14 @@ def main():
                         zip_file_path = destination_path
                         attach_file_to_ticket(sys_id, zip_file_path,service_now_instance,service_now_attachment_table,service_now_api_user, service_now_api_password)
                         subject = f"Client Error Report for {computer_name} at {local_time_str} Ticket: {ticket_number}"
+
+                    # lookup cluster nodes and attach results to email
+                    cluster_nodes = lookup_available_nodes(EI_FQDN, EI_USER, EI_PASSWORD)
+
+                    # logging.info(f"Email Body: {message}")
+                    if cluster_nodes:
+                        body += f"\nCurrent Cluster Nodes: {cluster_nodes}"
+
 
                     # send email
                     send_email(smtp_recipients, subject, body, smtp_from,smtp_from_domain,smtp_server, smtp_port, meme_path=None)

@@ -2,3 +2,4 @@ requests
 paramiko
 pillow
 oracledb
+python-dotenv

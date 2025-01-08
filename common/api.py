@@ -1,7 +1,10 @@
 # agfaEiServerUtils\common\api.py
 import logging
 import requests
+import urllib3
 
+# ignore insecure warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # function to get auth token
 def get_token(EI_FQDN,EI_USER,EI_PASSWORD):
