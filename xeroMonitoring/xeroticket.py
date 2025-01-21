@@ -249,12 +249,12 @@ def get_xero_ticket(xero_server, retry_amount=xero_retry_attempts):
                 # logging.info(response.text)
                 return response.text
             else:
-                logging.info(f"{xero_server} Ticket Creation Failure, Status Code: {response.status_code}")
+                logging.warning(f"{xero_server} Ticket Creation Failure, Status Code: {response.status_code}")
         except requests.exceptions.RequestException as e:
-            logging.error(f"An error occurred while attempting to create xero tickets on {xero_server}: {e}")
+            logging.warning(f"An error occurred while attempting to create xero tickets on {xero_server}: {e}")
 
         # Wait before retrying
-        sleep(2)
+        sleep(5)
 
     logging.error(f"Failed to create xero ticket after {retry_amount} attempts")
     return None
@@ -274,12 +274,12 @@ def verify_ticket(xero_server, xero_ticket, retry_amount=xero_retry_attempts):
                 logging.info(f"{xero_server} Ticket verification successful")
                 return True
             else:
-                logging.info(f"{xero_server} Ticket verification failed, Status Code: {response.status_code}")
+                logging.warning(f"{xero_server} Ticket verification failed, Status Code: {response.status_code}")
         except requests.exceptions.RequestException as e:
-            logging.error(f"An error occurred while attempting to verify the ticket: {e}")
+            logging.warning(f"An error occurred while attempting to verify the ticket: {e}")
 
         # Wait before retrying
-        sleep(2)
+        sleep(5)
 
     logging.error(f"Failed to verify xero ticket after {retry_amount} attempts")
     return False
