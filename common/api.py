@@ -60,7 +60,7 @@ def lookup_available_nodes(EI_FQDN,EI_USER,EI_PASSWORD):
     cluster_url = f"https://{EI_FQDN}/ris/web/v2/queues/availableNodes"
 
     try:
-        response = requests.get(cluster_url, headers=headers, verify=True)
+        response = requests.get(cluster_url, headers=headers, verify=False)
         response.raise_for_status()
         logging.info("API call successful.")
         logging.info(response.text)
