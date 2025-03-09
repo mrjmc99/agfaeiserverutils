@@ -98,6 +98,18 @@ Run the script using the following command:
 python error_report_script.py
 ```
 
+To run on Linux create a bash script, eg:
+```bash
+#!/bin/bash
+ 
+# Set the environment variable for COMPUTERNAME
+export COMPUTERNAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+ 
+# Run the Python script
+python3 /opt/scripts/agfaeiserverutils/clientErrorReports/error-report.py
+```
+
+
 The script will process error reports, create incidents in ServiceNow, and send email notifications based on the Environment.
 
 ## Script Logic
@@ -196,6 +208,16 @@ The script uses a Environment file named **jboss-check.env** for various setting
    ```bash
    python jboss_check_script.py
    ```
+To run on Linux create a bash script, eg:
+```bash
+#!/bin/bash
+ 
+# Set the environment variable for COMPUTERNAME
+export COMPUTERNAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+ 
+# Run the Python script
+python3 /opt/scripts/agfaeiserverutils/cspJbossAlerts/jboss-check.py
+```
 
 3. Monitor the console output for information about JBoss EAP events, health checks, and email notifications.
 
@@ -229,6 +251,17 @@ Run the script using the following command:
 
 ```bash
 python xero_ticket_script.py
+```
+
+To run on Linux create a bash script, eg:
+```bash
+#!/bin/bash
+ 
+# Set the environment variable for COMPUTERNAME
+export COMPUTERNAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+ 
+# Run the Python script
+python3 /opt/scripts/agfaeiserverutils/xeroMonitoring/xeroticket.py
 ```
 
 The script performs the following actions:
