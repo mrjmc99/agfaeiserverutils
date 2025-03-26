@@ -37,14 +37,22 @@ All scripts share some **common** functionalities:
 
 ## Common Prerequisites
 
-1. **Python 3.x installed**  
+1. **Python 3.11+ installed**  
    Make sure Python is installed on each machine where you plan to run these scripts.
 
 2. **Install Python Dependencies**  
    Each script (and the common code) has a `requirements.txt` or combined dependencies. Typically:
    ```bash
    pip install -r requirements.txt
-   
+    ```
+**Agfa Oracle Linux 8 VM install**
+
+When using the Stock Agfa OL8 OVA, you will need to remove python 3.6 and upgrade to 3.11 or greater, for example:
+
+    dnf remove python3 -y
+    dnf install python3.12 python3.12-pip -y
+
+
 Make sure to do this within a virtual environment (venv) or system-wide, depending on your environment.
 
 Environment Files
