@@ -202,7 +202,7 @@ def create_and_send_failure_incident(xero_server, failure_reason):
     body = f"Xero Ticketing/Image Display is failing on {xero_server} at {local_time_str}\nPlease investigate."
     incident_summary = subject
     external_unique_id = str(uuid.uuid4())
-    incident_number = create_service_now_incident(
+    incident_number, sys_id = create_service_now_incident(
         incident_summary, body, 'none', configuration_item,
         external_unique_id, urgency, impact,service_now_instance,
         service_now_table,service_now_api_user,
@@ -371,7 +371,7 @@ def disable_xero_server(xero_server):
         incident_summary = f"Xero Ticketing/Image Display is failing on {xero_server} at {local_time_str} (Unable to connect to server)"
         incident_description = body
         external_unique_id = str(uuid.uuid4())
-        incident_number = create_service_now_incident(
+        incident_number, sys_id = create_service_now_incident(
             incident_summary, body, 'none',
             configuration_item, external_unique_id,
             urgency, impact,service_now_instance,service_now_table,
@@ -398,7 +398,7 @@ def disable_xero_server(xero_server):
         incident_summary = f"Xero Ticketing/Image Display is failing on {xero_server} at {local_time_str} (Server Disabled)"
         incident_description = body
         external_unique_id = str(uuid.uuid4())
-        incident_number = create_service_now_incident(
+        incident_number, sys_id = create_service_now_incident(
             incident_summary, incident_description,
             'none',
             configuration_item, external_unique_id,
